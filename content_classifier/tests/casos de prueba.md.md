@@ -1,6 +1,6 @@
 
 
-## 📌 Casos de Prueba
+##  Casos de Prueba
 A continuación se describen los casos de prueba iniciales que permiten validar el comportamiento del sistema ante diferentes tipos de comentarios.
 
 ---
