@@ -1,0 +1,479 @@
+{
+  "name": "Clasificación de tweets",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -656,
+        160
+      ],
+      "id": "2f238a26-a773-420d-ba5d-bb4c7d7de5bc",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1248,
+        160
+      ],
+      "id": "7746ba8b-4890-4c2a-8cc6-a477feef0385",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://models.inference.ai.azure.com/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Analiza el siguiente tweet y clasifícalo estrictamente usando el esquema JSON proporcionado.El análisis debe centrarse en la política de Colombia.Responde únicamente con un JSON válido, sin texto adicional, explicaciones ni comentarios.No inventes campos, no cambies nombres de variables y no agregues información fuera del esquema.Si no hay suficiente información para una variable, elige el valor más adecuado (por ejemplo: 'ninguno', 'neutral', 'bajo', false).TEXTO A CLASIFICAR:{{ $json['Text Content'] }}Esquema JSON obligatorio para la respuesta:{'sentiment': {'classification':'positivo' | 'negativo' |'neutro','confidence': number,'score':number},'stance':'a_favor'|'en_contra'|'neutral'|'no_relacionado','misinformation_risk':'alto'|'medio' |'bajo'|'ninguno','polarization_level': 'alto' |'medio'|'bajo','relevance': 'alta'|'media'|'baja'|'ninguna','spam_detection':{'is_spam':true|false,'confidence':number,'spam_indicators':[string]},'harmful_content':{'hate_speech_type':'ninguno'|'odio'|'discriminación'|'ataque_personal'|'acoso'|'violencia_política'|'incitación_violencia','severity':'bajo'|'medio'|'alto'|'crítico'}, 'tweet': '{{ $json['Text Content'] }}', 'tweet_id': '{{ $('Pre-procesamiento').item.json['Tweete id'] }}'}Recuerda:'stance' identifica si el tweet está a favor, en contra, neutral o no relacionado con la  política de Colombia.Si el tweet es spam, igualmente debes llenar todas las otras variables con el análisis más coherente posible.No incluyas explicaciones fuera del JSON.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -432,
+        176
+      ],
+      "id": "db8d2214-1648-4c76-82e8-b2f3d89b54b3",
+      "name": "Clasificación",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "xZ0SIZrL3ZgphrBk",
+          "name": "Credentials Git"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.twitterapi.io/twitter/tweet/advanced_search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "\"+reforma pensional\"  -filter:images since:2025-10-01"
+            },
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1072,
+        160
+      ],
+      "id": "dc76dadb-33fc-4cb3-80b8-bac0b3c13bd2",
+      "name": "API Twitter",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ZCEswX8tTZibfgLH",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const tweets = $input.first().json.tweets;\n\nif (!Array.isArray(tweets)) {\n  console.log('Tweets data is not an array or is missing.');\n  return [{ error: 'No tweets found or invalid data structure' }];\n}\n\n// ---- Limpieza de texto ----\nfunction sanitize(text) {\n  if (!text) return \"\";\n  return text\n    .replace(/\\r\\n|\\n|\\r/g, ' ')\n    .replace(/[\\u200B-\\u200D\\uFEFF]/g, \"\")                 // Elimina caracteres invisibles\n    .replace(/[^\\w\\s.,!?áéíóúÁÉÍÓÚñÑ]/g, \"\");              // Elimina símbolos extraños\n}\n\n// ---- Limitar cantidad de tweets ----\nconst limit = 5;  // cámbialo si quieres\nconst Rtweets = tweets.slice(0, limit);\n\n// ---- Mapear y limpiar ----\nconst extractedData = Rtweets.map(tweet => ({\n  \"Text Content\": sanitize(tweet.text),\n  \"Tweete id\":tweet.id,\n}));\n\nreturn extractedData;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -912,
+        160
+      ],
+      "id": "9838f28c-61bc-4b99-9b8d-53ea19a08583",
+      "name": "Pre-procesamiento"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n    // Detectar la ruta real del campo \"content\"\n    let raw =\n        item.json?.content ??\n        item.json?.message?.content ??\n        item.json?.choices?.[0]?.message?.content ??\n        item.json?.choices?.[0]?.message?.message?.content ??\n        undefined;\n\n    if (!raw) {\n        throw new Error(\"No pude encontrar el campo 'content' en este item:\\n\" + JSON.stringify(item.json, null, 2));\n    }\n\n    raw = String(raw).trim();\n\n    // Quitar backticks\n    raw = raw.replace(/```json/g, \"\")\n             .replace(/```/g, \"\")\n             .trim();\n\n    // Reparar comillas simples si la IA las usa\n    if (raw.includes(\"'\") && !raw.includes('\"')) {\n        raw = raw.replace(/'/g, '\"');\n    }\n\n    let parsed;\n    try {\n        parsed = JSON.parse(raw);\n    } catch (e) {\n        throw new Error(\"No pude parsear este item:\\n\" + raw);\n    }\n\n    return { json: parsed };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        176
+      ],
+      "id": "6214fa1f-8d03-4866-a82b-bcbb74cd53e3",
+      "name": "Formato JSON"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "772cab03-d4c2-4d23-8743-1f40647be3aa",
+              "leftValue": "={{ $json.triggerEmail }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "20b13758-0543-482a-91f0-c86567abca0d",
+      "name": "ifGmail"
+    },
+    {
+      "parameters": {
+        "sendTo": "davidasz20053@gmail.com",
+        "subject": "Alerta",
+        "message": "=Se ha detectado un tweet que posiblemente incumpla con las normas de la comunidad.   Discurso de odio: {{ $json.harmful_content.hate_speech_type }} Severidad: {{ $json.harmful_content.severity }} Riesgo de desinformación: {{ $json.misinformation_risk }} Nivel de polarización: {{ $json.polarization_level }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        432,
+        -64
+      ],
+      "id": "9e975623-a34f-45eb-8a96-35a160d75949",
+      "name": "Send a message",
+      "webhookId": "a8390d7d-d90a-40e6-86dc-c158bdde915c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "dta8rzjWpNSmJW7B",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "=tweets_analysis",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tweet_text": "={{ $json.tweet }}",
+            "tweet_id": "={{ $json.tweet_id }}",
+            "sentiment_classification": "={{ $json.sentiment.classification }}",
+            "sentiment_confidence": "={{ $json.sentiment.confidence }}",
+            "stance": "={{ $json.stance}}",
+            "misinformation_risk": "={{ $json.misinformation_risk }}",
+            "polarization_level": "={{ $json.polarization_level }}",
+            "relevance": "={{ $json.relevance }}",
+            "spam_confidence": "={{ $json.spam_detection.confidence }}",
+            "is_spam": "={{ $json.spam_detection.is_spam }}",
+            "hate_speech_type": "={{ $json.harmful_content.hate_speech_type }}",
+            "harmful_severity": "={{ $json.harmful_content.severity }}",
+            "created_at": "={{ $now }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "tweet_id",
+              "displayName": "tweet_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tweet_text",
+              "displayName": "tweet_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentiment_classification",
+              "displayName": "sentiment_classification",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentiment_confidence",
+              "displayName": "sentiment_confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "stance",
+              "displayName": "stance",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "misinformation_risk",
+              "displayName": "misinformation_risk",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "polarization_level",
+              "displayName": "polarization_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "relevance",
+              "displayName": "relevance",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "is_spam",
+              "displayName": "is_spam",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "spam_confidence",
+              "displayName": "spam_confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "hate_speech_type",
+              "displayName": "hate_speech_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "harmful_severity",
+              "displayName": "harmful_severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        240,
+        176
+      ],
+      "id": "61fa6fdd-1aaa-4a73-8958-9038e57f0274",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "wyQUrpI47SEUixR2",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(item => {\n    const data = item.json;\n\n    const h = data.harmful_content || {};\n    const m = data.misinformation_risk;\n    const p = data.polarization_level;\n\n    // Lista de discursos de odio críticos\n    const hateTypes = [\n        \"odio\",\n        \"discriminación\",\n        \"ataque_personal\",\n        \"acoso\",\n        \"violencia_politica\",\n        \"incitación_violencia\"\n    ];\n\n    // Condición A: Hate speech crítico\n    const isCriticalHate =\n        hateTypes.includes(h.hate_speech_type) &&\n        h.severity === \"critico\";\n\n    // Condición B: Riesgo de desinformación + polarización\n    const isHighRisk =\n        m === \"alto\" &&\n        p === \"alto\";\n\n    // Resultado final\n    const triggerEmail = isCriticalHate || isHighRisk;\n\n    return {\n        json: {\n            ...data,\n            triggerEmail\n        }\n    };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "221b2bcc-db77-40bc-8c6b-91f065129025",
+      "name": "Reglas de negocio"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Clasificación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "API Twitter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificación": {
+      "main": [
+        [
+          {
+            "node": "Formato JSON",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Twitter": {
+      "main": [
+        [
+          {
+            "node": "Pre-procesamiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre-procesamiento": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formato JSON": {
+      "main": [
+        [
+          {
+            "node": "Reglas de negocio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ifGmail": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reglas de negocio": {
+      "main": [
+        [
+          {
+            "node": "ifGmail",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6180b512-260a-4d26-a9b5-209edc5b3bee",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "92679a52156a08a6d0663fe3fe620b24932abbbc45da2e30e53c67580c325a99"
+  },
+  "id": "gPJ6PHUw2qnF66ij",
+  "tags": []
+}

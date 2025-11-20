@@ -16,7 +16,7 @@ services:
       - ./n8n_data:/data
     restart: "no"
 
-  # Base de datos PostgreSQL
+  # Base de datos PostgreSQL 
   postgres:
     image: postgres:15
     container_name: n8n_postgres
@@ -24,16 +24,18 @@ services:
     environment:
       POSTGRES_USER: n8nuser
       POSTGRES_PASSWORD: n8npassword
-      POSTGRES_DB: n8n
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+      POSTGRES_DB: n8n  # Base de datos por defecto para n8n
+      POSTGRES_MULTIPLE_DATABASES: "n8n,political_tweets"  
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
+      - ./database/init-multiple-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U n8nuser -d n8n"]
       interval: 10s
       timeout: 5s
       retries: 5
-#  n8n - Orquestación del flujo
+
+  # n8n - Orquestación del flujo 
   n8n:
     image: docker.n8n.io/n8nio/n8n
     container_name: n8n
@@ -66,24 +68,33 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
 
-
-  #  Dashboard con Streamlit
+  # Dashboard con Streamlit 
   dashboard:
     image: python:3.11-slim
     container_name: dashboard
     restart: always
     ports:
       - "8501:8501"
-    volumes:
-      - ./dashboard:/app
     working_dir: /app
+    volumes:
+      - ./dashboard:/app             # Tu código local
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: n8nuser
+      DB_PASS: n8npassword
+      DB_NAME: political_tweets
     command: >
       sh -c "
-      pip install -r requirements.txt &&
-      streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
+        apt-get update &&
+        apt-get install -y gcc libpq-dev &&
+        pip install --upgrade pip &&
+        pip install -r requirements.txt &&
+        streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
       "
     depends_on:
       - postgres
+
 volumes:
   n8n_data:
   postgres_data:
