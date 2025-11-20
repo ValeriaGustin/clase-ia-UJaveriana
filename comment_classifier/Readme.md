@@ -40,13 +40,14 @@ Sistema inteligente de clasificación automática de tweets políticos que anali
 - **Postura Política:** A favor, En contra, Neutral, No relacionado  
 - **Riesgo de Desinformación:** Alto, Medio, Bajo, Ninguno  
 - **Nivel de Polarización:** Alto, Medio, Bajo  
-- **Detección de Spam:** Clasificación automática
-- **Contenido Nocivo:** 7 categorías de discurso de odio
+- **Detección de Spam:** Devuelve un objeto estructurado con la clasificación y sus indicadores.
+- **Contenido Nocivo:** Ninguno, odio, discriminación, ataque_personal, acoso, violencia_politica, incitación_violencia.
+- **Nivel de severidad:** Promedio, alto, medio, bajo, critico.
 
 ---
 
 ## Arquitectura
-
+![Arquitectura](Arquitectura.png)
 
 ---
 
